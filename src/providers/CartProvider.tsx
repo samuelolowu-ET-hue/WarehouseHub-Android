@@ -56,35 +56,51 @@ export function CartProvider({ children }: { children: ReactNode }) {
   const [items, setItems] = useState<CartItem[]>([]);
   const [loading, setLoading] = useState(true);
   const prevUserIdRef = useRef<string | null>(null);
+  const isRefreshingRef = useRef(false);
 
-  // Load cart on auth change
-  const loadCart = useCallback(async () => {
-    setLoading(true);
-    try {
-      if (userId) {
-        // If transitioning from guest to logged-in user, merge guest items
-        if (prevUserIdRef.current === null) {
-          const guestItems = await loadGuestCart();
-          if (guestItems.length > 0) {
-            await mergeGuestCartIntoRemote(userId, guestItems);
-          }
-        }
-        const remoteItems = await fetchRemoteCart(userId);
-        setItems(remoteItems);
-      } else {
-        const guestItems = await loadGuestCart();
-        setItems(guestItems);
+  // Load cart on auth change or manual refresh
+  const loadCart = useCallback(
+    async (isBackground = false) => {
+      if (isRefreshingRef.current) return;
+      isRefreshingRef.current = true;
+
+      if (!isBackground) {
+        setLoading(true);
       }
-    } catch (err) {
-      console.error('Failed to load cart:', err);
-    } finally {
-      setLoading(false);
-      prevUserIdRef.current = userId;
-    }
-  }, [userId]);
+      try {
+        if (userId) {
+          // If transitioning from guest to logged-in user, merge guest items
+          if (prevUserIdRef.current === null) {
+            const guestItems = await loadGuestCart();
+            if (guestItems.length > 0) {
+              await mergeGuestCartIntoRemote(userId, guestItems);
+            }
+          }
+          const remoteItems = await fetchRemoteCart(userId);
+          setItems(remoteItems);
+        } else {
+          const guestItems = await loadGuestCart();
+          setItems(guestItems);
+        }
+      } catch (err) {
+        console.error('Failed to load cart:', err);
+      } finally {
+        if (!isBackground) {
+          setLoading(false);
+        }
+        isRefreshingRef.current = false;
+        prevUserIdRef.current = userId;
+      }
+    },
+    [userId]
+  );
 
   useEffect(() => {
-    loadCart();
+    loadCart(false);
+  }, [loadCart]);
+
+  const refreshCart = useCallback(async () => {
+    await loadCart(true);
   }, [loadCart]);
 
   // Reconcile cart items when catalogue products load/update
@@ -205,9 +221,9 @@ export function CartProvider({ children }: { children: ReactNode }) {
       updateQuantity,
       removeItem,
       clearCart,
-      refreshCart: loadCart,
+      refreshCart,
     }),
-    [items, totalCount, subtotal, loading, addItem, updateQuantity, removeItem, clearCart, loadCart]
+    [items, totalCount, subtotal, loading, addItem, updateQuantity, removeItem, clearCart, refreshCart]
   );
 
   return <CartContext.Provider value={value}>{children}</CartContext.Provider>;

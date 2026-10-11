@@ -1,12 +1,15 @@
+import { useCallback, useState } from 'react';
 import {
   Alert,
   FlatList,
   Pressable,
+  RefreshControl,
+  ScrollView,
   StyleSheet,
   Text,
   View,
 } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useFocusEffect, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Ionicons from '@expo/vector-icons/Ionicons';
 
@@ -26,9 +29,34 @@ import { colors, font, MIN_TOUCH, radius, shadow, spacing } from '../../src/them
 export default function CartScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { items, totalCount, subtotal, loading, updateQuantity, removeItem, clearCart } =
-    useCart();
+  const {
+    items,
+    totalCount,
+    subtotal,
+    loading,
+    updateQuantity,
+    removeItem,
+    clearCart,
+    refreshCart,
+  } = useCart();
   const { session } = useAuth();
+  const [refreshing, setRefreshing] = useState(false);
+
+  // Refresh cart when the cart screen receives focus
+  useFocusEffect(
+    useCallback(() => {
+      refreshCart();
+    }, [refreshCart])
+  );
+
+  const handleRefresh = useCallback(async () => {
+    setRefreshing(true);
+    try {
+      await refreshCart();
+    } finally {
+      setRefreshing(false);
+    }
+  }, [refreshCart]);
 
   // Free delivery threshold: £50
   const freeDeliveryThreshold = 50.0;
@@ -109,13 +137,25 @@ export default function CartScreen() {
       </View>
 
       {items.length === 0 ? (
-        <EmptyState
-          icon="cart-outline"
-          title="Your basket is empty"
-          message="Explore practical storage, shelving, and organization essentials with warehouse pricing."
-          actionLabel="Browse Catalogue"
-          onAction={() => router.replace('/(shop)/home')}
-        />
+        <ScrollView
+          contentContainerStyle={styles.emptyContainer}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={handleRefresh}
+              tintColor={colors.accent}
+              colors={[colors.accent]}
+            />
+          }
+        >
+          <EmptyState
+            icon="cart-outline"
+            title="Your basket is empty"
+            message="Explore practical storage, shelving, and organization essentials with warehouse pricing."
+            actionLabel="Browse Catalogue"
+            onAction={() => router.replace('/(shop)/home')}
+          />
+        </ScrollView>
       ) : (
         <>
           <FlatList
@@ -125,6 +165,14 @@ export default function CartScreen() {
               styles.listContent,
               { paddingBottom: insets.bottom + 120 },
             ]}
+            refreshControl={
+              <RefreshControl
+                refreshing={refreshing}
+                onRefresh={handleRefresh}
+                tintColor={colors.accent}
+                colors={[colors.accent]}
+              />
+            }
             renderItem={({ item }) => (
               <CartItemRow
                 item={item}
@@ -318,6 +366,10 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.stone,
     alignItems: 'center',
+    justifyContent: 'center',
+  },
+  emptyContainer: {
+    flexGrow: 1,
     justifyContent: 'center',
   },
   listContent: {
